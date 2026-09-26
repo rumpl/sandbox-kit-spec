@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "com.docker.sandbox/ssh-agent@1",
+  "description": "Config schema for one ssh-agent need: the phase whose processes can reach the SSH agent the runtime exposes on the user's behalf, with credential@1's phase boundary, and what the agent may sign. An entry stating neither sign nor authenticate is unbounded: the agent signs whatever the sandbox asks. An entry stating either signs only what it names. Which backing agent answers is the runtime's decision; the Kit names no agent, socket, or key. Instance-shaped, keyed by phase. The @1 in the type names this schema; it moves when the schema does.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "phase"
+  ],
+  "properties": {
+    "phase": {
+      "anyOf": [
+        {
+          "enum": [
+            "install",
+            "runtime"
+          ]
+        },
+        {
+          "$ref": "../../definitions/kit-arg.schema.json#/definitions/bearing"
+        }
+      ]
+    },
+    "sign": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Namespaces of the namespaced (SSHSIG) signatures the agent may make: git for commits and tags, file for files. Omit for none in a bounded entry; an empty list is an error.",
+      "items": {
+        "type": "string",
+        "anyOf": [
+          {
+            "pattern": "^[!-~]+$"
+          },
+          {
+            "$ref": "../../definitions/kit-arg.schema.json#/definitions/bearing"
+          }
+        ]
+      }
+    },
+    "authenticate": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Servers the agent may log in to, as host or user@host: a literal lowercase DNS name with no wildcard, port, or IP address. A login is signed only for a session the client bound to one of these servers' host keys. Omit for no logins in a bounded entry; an empty list is an error.",
+      "items": {
+        "type": "string",
+        "anyOf": [
+          {
+            "pattern": "^([a-z_][a-z0-9_.-]*@)?[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+          },
+          {
+            "$ref": "../../definitions/kit-arg.schema.json#/definitions/bearing"
+          }
+        ]
+      }
+    }
+  }
+}

@@ -498,6 +498,27 @@ func (m *capabilityMerge) add(reference string, n Capability) error {
 		return fmt.Errorf("merge: %s and %s both declare %s; one credential has one owner",
 			prev.reference, reference, describeCapability(n))
 	}
+	// One socket per phase serves every kit that asked: the merged entry
+	// signs what any of them may, which is why the bounds union rather
+	// than conflict.
+	if n.Type == CapabilitySSHAgent {
+		var held, asked SSHAgent
+		if err := decodeForMerge(prev.reference, prev.capability, &held); err != nil {
+			return err
+		}
+		if err := decodeForMerge(reference, n, &asked); err != nil {
+			return err
+		}
+		merged, err := CapabilityWithConfig(prev.capability, mergeSSHAgents(held, asked))
+		if err != nil {
+			return fmt.Errorf("merge: %s and %s: %w", prev.reference, reference, err)
+		}
+		m.byKey[key] = keyed{reference: prev.reference, capability: *merged}
+		if !n.Optional {
+			m.optional[key] = false
+		}
+		return nil
+	}
 	if !sameRequest(prev.capability, n) {
 		return fmt.Errorf("merge: %s and %s both declare %s but ask for different things; one of them has to change",
 			prev.reference, reference, describeCapability(n))
@@ -535,6 +556,14 @@ func (m *capabilityMerge) instanceKey(reference string, n Capability) (string, e
 			return "", err
 		}
 		return n.Type + "\x00" + c.Service + "\x00" + c.Phase, nil
+	case CapabilitySSHAgent:
+		// One socket per phase, whichever kits asked: two asks for the
+		// same phase are one ask, unlike a credential's single owner.
+		var a SSHAgent
+		if err := decodeForMerge(reference, n, &a); err != nil {
+			return "", err
+		}
+		return n.Type + "\x00" + a.Phase, nil
 	case CapabilityVolume:
 		var v Volume
 		if err := decodeForMerge(reference, n, &v); err != nil {

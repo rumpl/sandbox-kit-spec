@@ -335,6 +335,11 @@ const (
 	// (service, phase).
 	CapabilityCredential = "com.docker.sandbox/credential@1"
 
+	// CapabilitySSHAgent exposes an SSH agent to one phase, relaying to a
+	// backing agent of the runtime's choosing; config decodes to SSHAgent.
+	// Instance-shaped, keyed by phase.
+	CapabilitySSHAgent = "com.docker.sandbox/ssh-agent@1"
+
 	// CapabilityVolume is one persistent (or tmpfs) path; config decodes to
 	// Volume. Instance-shaped, keyed by path.
 	CapabilityVolume = "com.docker.sandbox/volume@1"
@@ -554,6 +559,29 @@ type Credential struct {
 	// OAuth configures proxy-managed OAuth token interception.
 	OAuth *OAuth `json:"oauth,omitempty" yaml:"oauth,omitempty"`
 }
+
+// SSHAgent is CapabilitySSHAgent's config: the phase whose processes can
+// reach the agent, and what the agent may sign for them. Which backing
+// agent answers is the runtime's decision; a kit names the need, never an
+// agent, a socket, or a key.
+type SSHAgent struct {
+	// Phase is "install" or "runtime", with credential@1's boundary.
+	Phase string `json:"phase" yaml:"phase"`
+
+	// Sign lists the namespaces of the namespaced (SSHSIG) signatures the
+	// agent may make. Omitted is not the same as empty: an empty list is
+	// an error, so that a generated document cannot read as "sign
+	// nothing" in one tool and "no bound" in another.
+	Sign []string `json:"sign,omitempty" yaml:"sign,omitempty"`
+
+	// Authenticate lists the servers the agent may log in to, each
+	// "host" or "user@host".
+	Authenticate []string `json:"authenticate,omitempty" yaml:"authenticate,omitempty"`
+}
+
+// Bounded reports whether the entry limits what the agent signs. An
+// entry stating neither list signs whatever the sandbox asks.
+func (a SSHAgent) Bounded() bool { return a.Sign != nil || a.Authenticate != nil }
 
 // APIKey configures proxy injection of an API key on outbound requests.
 type APIKey struct {
