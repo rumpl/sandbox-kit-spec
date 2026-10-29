@@ -2,6 +2,7 @@ package sandbox
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"net"
 
@@ -13,8 +14,10 @@ func hostPortFamily(ctx context.Context, e *Env) []report.Finding {
 	for _, family := range []string{"ipv4", "ipv6", "dual"} {
 		for _, transport := range []string{"tcp", "udp"} {
 			network, address, ip := "4", "127.0.0.1:0", net.IPv4(127, 0, 0, 1)
+			otherNetwork, otherHost, otherIP := "6", "::1", net.IPv6loopback
 			if family != "ipv4" {
 				network, address, ip = "6", "[::1]:0", net.IPv6loopback
+				otherNetwork, otherHost, otherIP = "4", "127.0.0.1", net.IPv4(127, 0, 0, 1)
 			}
 			var port string
 			var stop func()
@@ -25,23 +28,24 @@ func hostPortFamily(ctx context.Context, e *Env) []report.Finding {
 					return []report.Finding{report.Failf("%s TCP host listener: %v", family, err)}
 				}
 				port, stop = s.port(), s.start()
-				var other *hostPortTCPService
-				if family == "dual" {
-					other, err = listenHostPortTCP("tcp4", "127.0.0.1:"+port)
-					if err != nil {
-						stop()
-						return []report.Finding{report.Failf("dual IPv4 TCP listener: %v", err)}
-					}
-					other.key = s.key
-					stopFirst, stopOther := stop, other.start()
-					stop = func() { stopFirst(); stopOther() }
+				// Single-family grants must select the right service even when
+				// the other loopback has a different listener at the same port.
+				other, err := listenHostPortTCP("tcp"+otherNetwork, net.JoinHostPort(otherHost, port))
+				if err != nil {
+					stop()
+					return []report.Finding{report.Failf("%s opposite-family TCP listener: %v", family, err)}
 				}
+				if family == "dual" {
+					other.key = s.key
+				}
+				stopFirst, stopOther := stop, other.start()
+				stop = func() { stopFirst(); stopOther() }
 				probe = func(id string) []report.Finding {
 					out, failure := execOutput(ctx, e, id, "kit-tck-host-port-tcp", "18432")
 					if failure != nil {
 						return []report.Finding{*failure}
 					}
-					if err := hostPortTCPVerify(out, s); err != nil && (other == nil || hostPortTCPVerify(out, other) != nil) {
+					if err := hostPortTCPVerify(out, s); err != nil && (family != "dual" || hostPortTCPVerify(out, other) != nil) {
 						return []report.Finding{report.Failf("%s TCP: %v", family, err)}
 					}
 					return nil
@@ -52,23 +56,28 @@ func hostPortFamily(ctx context.Context, e *Env) []report.Finding {
 					return []report.Finding{report.Failf("%s UDP host listener: %v", family, err)}
 				}
 				port, stop = s.port(), s.start()
-				var other *hostPortUDPService
-				if family == "dual" {
-					conn, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: s.conn.LocalAddr().(*net.UDPAddr).Port})
-					if err != nil {
-						stop()
-						return []report.Finding{report.Failf("dual IPv4 UDP listener: %v", err)}
-					}
-					other = &hostPortUDPService{conn: conn, key: s.key}
-					stopFirst, stopOther := stop, other.start()
-					stop = func() { stopFirst(); stopOther() }
+				conn, err := net.ListenUDP("udp"+otherNetwork, &net.UDPAddr{IP: otherIP, Port: s.conn.LocalAddr().(*net.UDPAddr).Port})
+				if err != nil {
+					stop()
+					return []report.Finding{report.Failf("%s opposite-family UDP listener: %v", family, err)}
 				}
+				other := &hostPortUDPService{conn: conn}
+				if _, err := rand.Read(other.key[:]); err != nil {
+					_ = conn.Close()
+					stop()
+					return []report.Finding{report.Failf("UDP decoy key: %v", err)}
+				}
+				if family == "dual" {
+					other.key = s.key
+				}
+				stopFirst, stopOther := stop, other.start()
+				stop = func() { stopFirst(); stopOther() }
 				probe = func(id string) []report.Finding {
 					out, failure := execOutput(ctx, e, id, "kit-tck-host-port-udp", "18432", "single")
 					if failure != nil {
 						return []report.Finding{*failure}
 					}
-					if err := hostPortUDPVerify(out, "single", s); err != nil && (other == nil || hostPortUDPVerify(out, "single", other) != nil) {
+					if err := hostPortUDPVerify(out, "single", s); err != nil && (family != "dual" || hostPortUDPVerify(out, "single", other) != nil) {
 						return []report.Finding{report.Failf("%s UDP: %v", family, err)}
 					}
 					return nil

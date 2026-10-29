@@ -118,6 +118,24 @@ def request_udp(port, mode, destination=None):
         sys.exit(7)
 
 
+def with_family_fallback(transport, probe):
+    global host_address
+    if family not in ('ipv4', 'ipv6') or broken != 'host-port-' + transport + '-' + family + '-fallback':
+        return probe()
+    granted_address = host_address
+    host_address = '::1' if family == 'ipv4' else '127.0.0.1'
+    try:
+        # Prefer the ungranted family, falling back only if it is unavailable.
+        # Without a decoy listener this still reaches the granted service.
+        return probe()
+    except SystemExit as error:
+        if error.code != 7:
+            raise
+    finally:
+        host_address = granted_address
+    return probe()
+
+
 if verb == 'create':
     values = {'host_port': '18431', 'container_port': '18432'}
     kits = []
@@ -244,12 +262,12 @@ elif verb == 'exec':
                 destination = int(port)
             else:
                 sys.exit(7)
-        print(request_udp(port, mode, destination), end='')
+        print(with_family_fallback('udp', lambda: request_udp(port, mode, destination)), end='')
     elif command[0] == 'kit-tck-host-port-tcp':
         destination = model['mappings'].get(command[1])
         if destination is None or broken == 'host-port-tcp-no-forward':
             sys.exit(7)
-        print(request_tcp(destination), end='')
+        print(with_family_fallback('tcp', lambda: request_tcp(destination)), end='')
     elif command[0] == 'curl':
         port = command[-1].split(':')[-1].split('/')[0]
         destination = model['mappings'].get(port)

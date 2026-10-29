@@ -201,6 +201,10 @@ func TestBackingAgentCloseWithIdleClient(t *testing.T) {
 var mutations = map[string][]string{
 	"host-port-accepts-family-conflict":                        {"host-port@1/family-honored"},
 	"host-port-ignores-family":                                 {"host-port@1/family-honored"},
+	"host-port-tcp-ipv4-fallback":                              {"host-port@1/family-honored"},
+	"host-port-tcp-ipv6-fallback":                              {"host-port@1/family-honored"},
+	"host-port-udp-ipv4-fallback":                              {"host-port@1/family-honored"},
+	"host-port-udp-ipv6-fallback":                              {"host-port@1/family-honored"},
 	"host-port-omits-family-surface":                           {"host-port@1/family-honored"},
 	"host-port-accepts-published-conflict":                     {"host-port@1/published-port-conflict"},
 	"host-port-tcp-no-forward":                                 {"host-port@1/tcp-bytes"},
